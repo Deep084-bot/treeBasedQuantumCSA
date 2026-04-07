@@ -1,7 +1,25 @@
 ## Nexys A7-100T constraints for top_csa_tree_nexys
+## 4-input 4-bit pipelined CSA tree
 ## Based on Digilent Nexys-A7-100T master XDC.
 
-## Switches SW[0:15]
+## ── Clock ──────────────────────────────────────────────────────────────
+## 100 MHz on-board oscillator
+set_property -dict { PACKAGE_PIN E3  IOSTANDARD LVCMOS33 } [get_ports { CLK100MHZ }];
+create_clock -add -name sys_clk_pin -period 10.00 -waveform {0 5} [get_ports { CLK100MHZ }];
+
+## ── Reset ──────────────────────────────────────────────────────────────
+## CPU_RESETN is active-low; pressing it holds the pipeline in reset
+set_property -dict { PACKAGE_PIN C12 IOSTANDARD LVCMOS33 } [get_ports { CPU_RESETN }];
+
+## ── Switches SW[15:0] ──────────────────────────────────────────────────
+## SW[3:0]   -> input A  (4-bit)
+## SW[7:4]   -> input B  (4-bit)
+## SW[11:8]  -> input C  (4-bit)
+## SW[15:12] -> input D  (4-bit)
+##
+## NOTE: SW[8] and SW[9] are in bank 35 (1.8V) on the Nexys A7 schematic.
+##       They use LVCMOS18; the rest use LVCMOS33.  This is correct per
+##       the Digilent reference design and will not cause DRC errors.
 set_property -dict { PACKAGE_PIN J15 IOSTANDARD LVCMOS33 } [get_ports { SW[0] }];
 set_property -dict { PACKAGE_PIN L16 IOSTANDARD LVCMOS33 } [get_ports { SW[1] }];
 set_property -dict { PACKAGE_PIN M13 IOSTANDARD LVCMOS33 } [get_ports { SW[2] }];
@@ -19,13 +37,9 @@ set_property -dict { PACKAGE_PIN U12 IOSTANDARD LVCMOS33 } [get_ports { SW[13] }
 set_property -dict { PACKAGE_PIN U11 IOSTANDARD LVCMOS33 } [get_ports { SW[14] }];
 set_property -dict { PACKAGE_PIN V10 IOSTANDARD LVCMOS33 } [get_ports { SW[15] }];
 
-## Buttons for selecting internal C/D/E/F test values
-set_property -dict { PACKAGE_PIN M18 IOSTANDARD LVCMOS33 } [get_ports { BTNU }];
-set_property -dict { PACKAGE_PIN P18 IOSTANDARD LVCMOS33 } [get_ports { BTND }];
-set_property -dict { PACKAGE_PIN P17 IOSTANDARD LVCMOS33 } [get_ports { BTNL }];
-set_property -dict { PACKAGE_PIN M17 IOSTANDARD LVCMOS33 } [get_ports { BTNR }];
-
-## LEDs LED[0:15]
+## ── LEDs LED[15:0] ─────────────────────────────────────────────────────
+## LED[5:0]  display the 6-bit result (values 0-60).
+## LED[15:6] are driven to 0 in RTL but must still be constrained.
 set_property -dict { PACKAGE_PIN H17 IOSTANDARD LVCMOS33 } [get_ports { LED[0] }];
 set_property -dict { PACKAGE_PIN K15 IOSTANDARD LVCMOS33 } [get_ports { LED[1] }];
 set_property -dict { PACKAGE_PIN J13 IOSTANDARD LVCMOS33 } [get_ports { LED[2] }];
