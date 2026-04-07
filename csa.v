@@ -1,10 +1,10 @@
 `timescale 1ns / 1ps
-
 // Carry Save Adder (CSA): compresses three WIDTH-bit inputs into
 // sum and carry vectors. Numeric relation:
-// in1 + in2 + in3 = sum + (carry << 1)
+//   in1 + in2 + in3 = sum + (carry << 1)
+// Default WIDTH changed to 4 for the 4-input 4-bit design.
 module csa #(
-    parameter WIDTH = 8
+    parameter WIDTH = 4
 ) (
     input  wire [WIDTH-1:0] in1,
     input  wire [WIDTH-1:0] in2,

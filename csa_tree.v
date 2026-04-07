@@ -1,27 +1,40 @@
 `timescale 1ns / 1ps
+// Tree-based CSA network for FOUR 4-bit operands.
+//
+// Reduction plan (4 inputs -> 2 operands for final CPA):
+//
+//   Stage 1:  A + B + C  -->  s1[3:0], c1[3:0]   (c1 is weight-1 shifted)
+//   Stage 2:  D + s1 + (c1<<1)  -->  s2[4:0], c2[4:0]  (c2 weight-1 shifted)
+//
+// After stage 2 we have two vectors s2 and c2 whose weighted sum equals
+// A+B+C+D exactly.  The final carry-propagate adder resolves them.
+//
+// Output width: ceil(log2(4 * 15)) + 1 = 6 bits  (max sum = 60)
+//
+// Exposed stage visibility wires are kept for debug / simulation probing.
 
-// Tree-based CSA network for six 8-bit operands.
-// It returns two 16-bit operands for final carry-propagation addition:
-// final_sum_operand + final_carry_operand
 module csa_tree (
-    input  wire [7:0] A,
-    input  wire [7:0] B,
-    input  wire [7:0] C,
-    input  wire [7:0] D,
-    input  wire [7:0] E,
-    input  wire [7:0] F,
+    input  wire [3:0] A,
+    input  wire [3:0] B,
+    input  wire [3:0] C,
+    input  wire [3:0] D,
 
-    // Stage visibility for debug/clarity
-    output wire [7:0] stage1_sum,
-    output wire [7:0] stage1_carry,
-    output wire [7:0] stage2_sum,
-    output wire [7:0] stage2_carry,
+    // Stage visibility (handy for simulation)
+    output wire [3:0] stage1_sum,
+    output wire [3:0] stage1_carry,
 
-    output wire [15:0] final_sum_operand,
-    output wire [15:0] final_carry_operand
+    // Final two operands fed to the carry-propagate adder.
+    // Both are 6 bits wide to cover the full result range.
+    output wire [5:0] final_sum_operand,
+    output wire [5:0] final_carry_operand
 );
-    // Stage 1: Compress (A, B, C)
-    csa #(.WIDTH(8)) csa_stage1 (
+
+    // ------------------------------------------------------------------
+    // Stage 1: compress A, B, C
+    //   s1 = A XOR B XOR C  (bit-weight 1)
+    //   c1 = majority(A,B,C) (bit-weight 2, i.e. needs <<1 before adding)
+    // ------------------------------------------------------------------
+    csa #(.WIDTH(4)) csa_stage1 (
         .in1  (A),
         .in2  (B),
         .in3  (C),
@@ -29,59 +42,36 @@ module csa_tree (
         .carry(stage1_carry)
     );
 
-    // Stage 2: Compress (D, E, F)
-    csa #(.WIDTH(8)) csa_stage2 (
-        .in1  (D),
-        .in2  (E),
-        .in3  (F),
+    // ------------------------------------------------------------------
+    // Stage 2: compress D, s1, (c1<<1)
+    //
+    // c1 has bit-weight 2, so we present it shifted left by 1.
+    // Together with D (weight 1) and s1 (weight 1) the CSA produces:
+    //   s2 (weight 1)  and  c2 (weight 2, needs <<1 before adding)
+    //
+    // Width of this CSA is 5 bits to accommodate the shifted carry input.
+    // ------------------------------------------------------------------
+    wire [4:0] in2_stage2 = {1'b0, stage1_sum};          // D zero-extended
+    wire [4:0] in3_stage2 = {1'b0, D};                   // s1 zero-extended
+    wire [4:0] in4_stage2 = {stage1_carry, 1'b0};        // c1 << 1  (correct single shift)
+
+    wire [4:0] stage2_sum;
+    wire [4:0] stage2_carry;
+
+    csa #(.WIDTH(5)) csa_stage2 (
+        .in1  (in2_stage2),
+        .in2  (in3_stage2),
+        .in3  (in4_stage2),
         .sum  (stage2_sum),
         .carry(stage2_carry)
     );
 
-    // Align to include shifted carry terms.
-    wire [9:0] op1_s1;
-    wire [9:0] op2_c1_shift;
-    wire [9:0] op3_s2;
-    wire [9:0] op4_c2_shift;
+    // ------------------------------------------------------------------
+    // Package outputs for the final carry-propagate adder.
+    // stage2_carry has bit-weight 2 (needs <<1).
+    // Both operands are zero-extended to 6 bits.
+    // ------------------------------------------------------------------
+    assign final_sum_operand   = {1'b0, stage2_sum};           // [5:0]
+    assign final_carry_operand = {stage2_carry, 1'b0};         // carry << 1, [5:0]
 
-    assign op1_s1      = {2'b00, stage1_sum};
-    assign op2_c1_shift = {1'b0, stage1_carry, 1'b0};
-    assign op3_s2      = {2'b00, stage2_sum};
-    assign op4_c2_shift = {1'b0, stage2_carry, 1'b0};
-
-    // Stage 3: Compress first three aligned operands.
-    wire [9:0] stage3_sum;
-    wire [9:0] stage3_carry;
-
-    csa #(.WIDTH(10)) csa_stage3 (
-        .in1  (op1_s1),
-        .in2  (op2_c1_shift),
-        .in3  (op3_s2),
-        .sum  (stage3_sum),
-        .carry(stage3_carry)
-    );
-
-    // Stage 4: Compress stage3 result with remaining operand.
-    wire [10:0] stage3_sum_ext;
-    wire [10:0] stage3_carry_shift;
-    wire [10:0] op4_c2_shift_ext;
-
-    wire [10:0] stage4_sum;
-    wire [10:0] stage4_carry;
-
-    assign stage3_sum_ext    = {1'b0, stage3_sum};
-    assign stage3_carry_shift = {stage3_carry, 1'b0};
-    assign op4_c2_shift_ext  = {1'b0, op4_c2_shift};
-
-    csa #(.WIDTH(11)) csa_stage4 (
-        .in1  (stage3_sum_ext),
-        .in2  (stage3_carry_shift),
-        .in3  (op4_c2_shift_ext),
-        .sum  (stage4_sum),
-        .carry(stage4_carry)
-    );
-
-    // Operands for final carry-propagation adder.
-    assign final_sum_operand   = {5'b00000, stage4_sum};
-    assign final_carry_operand = {4'b0000, stage4_carry, 1'b0};
 endmodule

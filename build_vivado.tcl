@@ -1,50 +1,45 @@
-# Vivado batch build script for Nexys A7 CSA tree project
-# Usage:
+# build_vivado.tcl
+# Batch build script for the 4-input 4-bit pipelined CSA tree.
+# Run from the project folder:
 #   vivado -mode batch -source build_vivado.tcl
-#
-# Notes:
-# - Default part is Nexys A7-100T: xc7a100tcsg324-1
-# - For Nexys A7-50T, change PART below to xc7a50tcsg324-1
 
-set PROJECT_NAME csa_tree_nexys
-set PROJECT_DIR  ./vivado_project
-set PART         xc7a100tcsg324-1
-set TOP_MODULE   top_csa_tree_nexys
+set project_name "csa_tree_4bit"
+set part         "xc7a100tcsg324-1"   ;# Nexys A7-100T
+# For Nexys A7-50T use: xc7a50tcsg324-1
 
-file mkdir $PROJECT_DIR
-create_project $PROJECT_NAME $PROJECT_DIR -part $PART -force
+# Create project
+create_project $project_name ./$project_name -part $part -force
 
-# RTL sources
-add_files [list \
-    full_adder.v \
-    csa.v \
-    csa_tree.v \
-    final_adder.v \
-    top_csa_tree.v \
-    top_csa_tree_nexys.v \
-]
+# Add all RTL source files (full_adder.v is unchanged from original)
+add_files -norecurse {
+    full_adder.v
+    csa.v
+    csa_tree.v
+    final_adder.v
+    top_csa_tree.v
+    top_csa_tree_nexys.v
+}
 
-# Constraints
-add_files -fileset constrs_1 nexys_a7_csa_tree.xdc
+# Add constraints
+add_files -fileset constrs_1 -norecurse nexys_a7_csa_tree.xdc
 
-# Simulation sources
-add_files -fileset sim_1 testbench.v
-set_property top testbench [get_filesets sim_1]
+# Set top module
+set_property top top_csa_tree_nexys [current_fileset]
 
-# Synthesis/implementation top
-set_property top $TOP_MODULE [get_filesets sources_1]
-
+# Update compile order
 update_compile_order -fileset sources_1
-update_compile_order -fileset sim_1
 
+# Run synthesis, implementation, and bitstream generation
 launch_runs synth_1 -jobs 4
 wait_on_run synth_1
+if {[get_property PROGRESS [get_runs synth_1]] != "100%"} {
+    error "Synthesis failed."
+}
 
 launch_runs impl_1 -to_step write_bitstream -jobs 4
 wait_on_run impl_1
+if {[get_property PROGRESS [get_runs impl_1]] != "100%"} {
+    error "Implementation failed."
+}
 
-open_run impl_1
-report_timing_summary -file $PROJECT_DIR/timing_summary.rpt
-report_utilization   -file $PROJECT_DIR/utilization.rpt
-
-puts "Build complete. Bitstream and reports are in $PROJECT_DIR"
+puts "Build complete. Bitstream: ./${project_name}/${project_name}.runs/impl_1/top_csa_tree_nexys.bit"
