@@ -17,7 +17,7 @@ add_files -norecurse {
     csa_tree.v
     final_adder.v
     top_csa_tree.v
-    seg7_driver.v
+    Seg7adder.v
     top_csa_tree_nexys.v
 }
 
